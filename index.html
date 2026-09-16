@@ -45,6 +45,7 @@
   input { width:100%; background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:11px 12px; margin:6px 0; }
   button { background:var(--accent); color:#0b1320; border:0; border-radius:8px; padding:11px 14px; font-weight:600; width:100%; margin-top:6px; }
   button.ghost { background:transparent; color:var(--dim); border:1px solid var(--line); }
+  .open { display:block; text-align:center; text-decoration:none; background:var(--accent); color:#0b1320; border-radius:8px; padding:12px 14px; font-weight:600; margin-top:12px; }
   .msg { color:var(--dim); font-size:13px; margin-top:8px; min-height:1.2em; }
   .msg.bad { color:var(--red); }
   .empty { color:var(--dim); padding:20px 0; text-align:center; }
@@ -123,6 +124,9 @@ function venueCard(v) {
         <div class="fact"><small>Sample rate</small>${p.sampleRate?.hz ? `${p.sampleRate.hz / 1000} kHz` : '\u2014'}${p.sampleRate?.mismatched?.length ? ` \u00b7 <span style="color:var(--amber)">${p.sampleRate.mismatched.length} odd</span>` : ''}</div>
         <div class="fact"><small>Mics low</small>${lowMics.length ? `<span style="color:var(--amber)">${lowMics.map((w) => esc(w.name || 'mic')).join(', ')}</span>` : 'none'}</div>
       </div>
+      ${p.dashboardUrl
+        ? `<a class="open" href="${esc(p.dashboardUrl)}" target="_blank" rel="noopener">Open the full dashboard</a>`
+        : `<div class="meta" style="margin-top:10px">Full dashboard not reachable right now (the tunnel on the venue computer is off).</div>`}
       ${(p.changes || []).length ? `<details><summary>Recent changes (${p.changes.length})</summary><ul class="changes">${p.changes.slice(0, 10).map((c) => `<li>${esc(c.text)}</li>`).join('')}</ul></details>` : ''}
     </div>`;
 }
