@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AV Pulse</title>
+<!--
+  THE PHONE VIEW. One static page, no build step, hosted anywhere.
+
+  It signs a person in (email link, no password), lists the rigs that
+  person is a member of, and draws each rig's last summary. Row-level
+  security in the database decides what comes back; this page has no
+  say in it and could not widen it if it tried.
+
+  Fill in the two values below from the Supabase project's Settings ->
+  API. The publishable key is designed to be public.
+-->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  :root { color-scheme: dark; --bg:#12151a; --panel:#181c23; --panel2:#1f242d; --line:#2a303b; --text:#e6e9ef; --dim:#8b93a3;
+          --green:#22C55E; --amber:#FBBF24; --red:#EF4444; --accent:#4B9EFF; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 -apple-system, system-ui, sans-serif; padding: env(safe-area-inset-top) 16px calc(24px + env(safe-area-inset-bottom)); }
+  h1 { font-size:18px; margin:18px 0 6px; letter-spacing:.02em; }
+  .lead { color:var(--dim); margin:0 0 18px; font-size:13px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; margin:0 0 12px; }
+  .row { display:flex; align-items:center; gap:10px; }
+  .name { font-weight:600; font-size:16px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .badge { font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:4px 8px; border-radius:999px; background:var(--panel2); color:var(--dim); }
+  .badge.healthy { background:color-mix(in srgb,var(--green) 18%,var(--panel2)); color:var(--green); }
+  .badge.warning { background:color-mix(in srgb,var(--amber) 18%,var(--panel2)); color:var(--amber); }
+  .badge.fault   { background:color-mix(in srgb,var(--red) 18%,var(--panel2)); color:var(--red); }
+  .badge.stale   { background:color-mix(in srgb,var(--amber) 12%,var(--panel2)); color:var(--amber); }
+  .meta { color:var(--dim); font-size:12px; margin-top:4px; }
+  .verdict { border-left:3px solid var(--amber); padding:6px 10px; margin:10px 0 0; background:var(--panel2); border-radius:6px; }
+  .verdict.fault { border-color:var(--red); }
+  .verdict b { display:block; }
+  .verdict span { color:var(--dim); font-size:13px; }
+  .facts { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px; }
+  .fact { background:var(--panel2); border-radius:8px; padding:8px 10px; }
+  .fact small { display:block; color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
+  .changes { margin:12px 0 0; padding:0; list-style:none; color:var(--dim); font-size:13px; }
+  .changes li { padding:3px 0; border-top:1px solid var(--line); }
+  input, button { font:inherit; }
+  input { width:100%; background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:11px 12px; margin:6px 0; }
+  button { background:var(--accent); color:#0b1320; border:0; border-radius:8px; padding:11px 14px; font-weight:600; width:100%; margin-top:6px; }
+  button.ghost { background:transparent; color:var(--dim); border:1px solid var(--line); }
+  .msg { color:var(--dim); font-size:13px; margin-top:8px; min-height:1.2em; }
+  .msg.bad { color:var(--red); }
+  .empty { color:var(--dim); padding:20px 0; text-align:center; }
+  details summary { cursor:pointer; color:var(--dim); font-size:13px; margin-top:10px; }
+</style>
+</head>
+<body>
+<h1>AV Pulse</h1>
+<p class="lead" id="lead">Your rigs, from anywhere.</p>
+<div id="app"><div class="empty">Loading‚Ä¶</div></div>
+
+<script>
+// ---- fill these in from Supabase -> Project Settings -> API ----
+const SUPABASE_URL = 'https://okrjxmdedlkrnoidppyf.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_YKeoaqafw-LAeoQ1hajyWw_Mqk-UMhq';
+// ------------------------------------------------------------------
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ago = (iso) => {
+  if (!iso) return 'never';
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 90) return `${Math.round(s)}s ago`;
+  if (s < 5400) return `${Math.round(s / 60)} min ago`;
+  if (s < 172800) return `${Math.round(s / 3600)} h ago`;
+  return `${Math.round(s / 86400)} d ago`;
+};
+
+const configured = !SUPABASE_URL.startsWith('__') && !SUPABASE_ANON_KEY.startsWith('__');
+const sb = configured ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+function signIn() {
+  $('app').innerHTML = `
+    <div class="card">
+      <div class="name">Sign in</div>
+      <div class="meta">A link is emailed to you. No password.</div>
+      <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com">
+      <button id="send">Email me a sign-in link</button>
+      <div class="msg" id="msg"></div>
+    </div>`;
+  $('send').onclick = async () => {
+    const email = $('email').value.trim();
+    if (!email) return;
+    $('send').disabled = true;
+    const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.href.split('#')[0] } });
+    $('msg').textContent = error ? error.message : `Sent. Open the link on this phone.`;
+    $('msg').className = 'msg' + (error ? ' bad' : '');
+    $('send').disabled = false;
+  };
+}
+
+// A rig is STALE when the agent has not phoned home for a while. The
+// heartbeat is once a minute, so five minutes of silence means the
+// computer at the venue is asleep, off, or off the internet -- and that
+// is worth more than the last thing it said.
+const STALE_MS = 5 * 60 * 1000;
+
+function venueCard(v) {
+  const p = v.latest || {};
+  const stale = !v.last_seen_at || Date.now() - new Date(v.last_seen_at).getTime() > STALE_MS;
+  const overall = stale ? 'stale' : (v.overall || 'unknown');
+  const label = stale ? 'not reporting' : overall;
+  const verdicts = (p.verdicts || []).slice(0, 6);
+  const lowMics = (p.wireless || []).filter((w) => w.present && ((w.batteryPercent != null && w.batteryPercent <= 20) || (w.batteryBars != null && w.batteryBars <= 1)));
+  const online = (p.devices || []).filter((d) => d.kind === 'device');
+  const down = online.filter((d) => d.online === false || d.health === 'fault');
+  return `
+    <div class="card">
+      <div class="row"><div class="name">${esc(v.name)}</div><span class="badge ${overall}">${esc(label)}</span></div>
+      <div class="meta">Last heard ${esc(ago(v.last_seen_at))}${p.build ? ` ¬∑ ${esc(p.build)}` : ''}</div>
+      ${stale ? `<div class="verdict"><b>The computer at the venue is not reporting.</b><span>Asleep, off, or off the internet. What follows is the last thing it said.</span></div>` : ''}
+      ${verdicts.map((x) => `<div class="verdict ${esc(x.severity)}"><b>${esc(x.headline || x.title)}</b><span>${esc(x.whatToCheck || '')}</span></div>`).join('')}
+      <div class="facts">
+        <div class="fact"><small>Devices</small>${online.length}${down.length ? ` ¬∑ <span style="color:var(--red)">${down.length} down</span>` : ''}</div>
+        <div class="fact"><small>Clock</small>${esc(p.clock?.name || '‚Äî')}</div>
+        <div class="fact"><small>Sample rate</small>${p.sampleRate?.hz ? `${p.sampleRate.hz / 1000} kHz` : '‚Äî'}${p.sampleRate?.mismatched?.length ? ` ¬∑ <span style="color:var(--amber)">${p.sampleRate.mismatched.length} odd</span>` : ''}</div>
+        <div class="fact"><small>Mics low</small>${lowMics.length ? `<span style="color:var(--amber)">${lowMics.map((w) => esc(w.name || 'mic')).join(', ')}</span>` : 'none'}</div>
+      </div>
+      ${(p.changes || []).length ? `<details><summary>Recent changes (${p.changes.length})</summary><ul class="changes">${p.changes.slice(0, 10).map((c) => `<li>${esc(c.text)}</li>`).join('')}</ul></details>` : ''}
+    </div>`;
+}
+
+let channel = null;
+async function dashboard(user) {
+  $('lead').textContent = user.email;
+  const { data: venues, error } = await sb.from('venues').select('id,name,overall,last_seen_at,latest').order('name');
+  if (error) { $('app').innerHTML = `<div class="msg bad">${esc(error.message)}</div>`; return; }
+  $('app').innerHTML =
+    (venues.length ? venues.map(venueCard).join('') : `<div class="empty">No rigs yet. Add one below with the key from its Settings ‚Üí Cloud.</div>`) +
+    `<div class="card">
+      <div class="name">Add a rig</div>
+      <div class="meta">On the computer running AV Pulse: Settings ‚Üí Cloud ‚Üí ‚ÄúThis rig‚Äôs key‚Äù.</div>
+      <input id="vname" placeholder="What you call this rig (e.g. Main Sanctuary)">
+      <input id="vkey" placeholder="The rig‚Äôs key" autocomplete="off" spellcheck="false">
+      <button id="add">Add</button>
+      <div class="msg" id="addmsg"></div>
+      <button class="ghost" id="out">Sign out</button>
+    </div>`;
+  $('add').onclick = async () => {
+    const { error: e } = await sb.rpc('register_venue', { p_name: $('vname').value, p_key: $('vkey').value.trim() });
+    $('addmsg').textContent = e ? e.message : 'Added. It appears as soon as it phones home.';
+    $('addmsg').className = 'msg' + (e ? ' bad' : '');
+    if (!e) dashboard(user);
+  };
+  $('out').onclick = async () => { await sb.auth.signOut(); location.reload(); };
+
+  // Live: any change to a venue row redraws. RLS filters what arrives.
+  if (!channel) {
+    channel = sb.channel('venues').on('postgres_changes', { event: '*', schema: 'public', table: 'venues' }, () => dashboard(user)).subscribe();
+  }
+  // And a slow tick so "last heard 4 min ago" stays honest without a change.
+  clearTimeout(window.__tick); window.__tick = setTimeout(() => dashboard(user), 30000);
+}
+
+(async () => {
+  if (!configured) {
+    $('app').innerHTML = `<div class="card"><div class="name">Not configured yet</div><div class="meta">Fill in SUPABASE_URL and SUPABASE_ANON_KEY at the top of this page‚Äôs script.</div></div>`;
+    return;
+  }
+  const { data: { session } } = await sb.auth.getSession();
+  if (session?.user) dashboard(session.user); else signIn();
+  sb.auth.onAuthStateChange((_e, s) => { if (s?.user) dashboard(s.user); });
+})();
+</script>
+</body>
+</html>
