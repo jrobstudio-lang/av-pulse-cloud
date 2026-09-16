@@ -54,7 +54,7 @@
 <body>
 <h1>AV Pulse</h1>
 <p class="lead" id="lead">Your rigs, from anywhere.</p>
-<div id="app"><div class="empty">Loading‚Ä¶</div></div>
+<div id="app"><div class="empty">Loading&hellip;</div></div>
 
 <script>
 // ---- fill these in from Supabase -> Project Settings -> API ----
@@ -114,13 +114,13 @@ function venueCard(v) {
   return `
     <div class="card">
       <div class="row"><div class="name">${esc(v.name)}</div><span class="badge ${overall}">${esc(label)}</span></div>
-      <div class="meta">Last heard ${esc(ago(v.last_seen_at))}${p.build ? ` ¬∑ ${esc(p.build)}` : ''}</div>
+      <div class="meta">Last heard ${esc(ago(v.last_seen_at))}${p.build ? ` \u00b7 ${esc(p.build)}` : ''}</div>
       ${stale ? `<div class="verdict"><b>The computer at the venue is not reporting.</b><span>Asleep, off, or off the internet. What follows is the last thing it said.</span></div>` : ''}
       ${verdicts.map((x) => `<div class="verdict ${esc(x.severity)}"><b>${esc(x.headline || x.title)}</b><span>${esc(x.whatToCheck || '')}</span></div>`).join('')}
       <div class="facts">
-        <div class="fact"><small>Devices</small>${online.length}${down.length ? ` ¬∑ <span style="color:var(--red)">${down.length} down</span>` : ''}</div>
-        <div class="fact"><small>Clock</small>${esc(p.clock?.name || '‚Äî')}</div>
-        <div class="fact"><small>Sample rate</small>${p.sampleRate?.hz ? `${p.sampleRate.hz / 1000} kHz` : '‚Äî'}${p.sampleRate?.mismatched?.length ? ` ¬∑ <span style="color:var(--amber)">${p.sampleRate.mismatched.length} odd</span>` : ''}</div>
+        <div class="fact"><small>Devices</small>${online.length}${down.length ? ` \u00b7 <span style="color:var(--red)">${down.length} down</span>` : ''}</div>
+        <div class="fact"><small>Clock</small>${esc(p.clock?.name || '\u2014')}</div>
+        <div class="fact"><small>Sample rate</small>${p.sampleRate?.hz ? `${p.sampleRate.hz / 1000} kHz` : '\u2014'}${p.sampleRate?.mismatched?.length ? ` \u00b7 <span style="color:var(--amber)">${p.sampleRate.mismatched.length} odd</span>` : ''}</div>
         <div class="fact"><small>Mics low</small>${lowMics.length ? `<span style="color:var(--amber)">${lowMics.map((w) => esc(w.name || 'mic')).join(', ')}</span>` : 'none'}</div>
       </div>
       ${(p.changes || []).length ? `<details><summary>Recent changes (${p.changes.length})</summary><ul class="changes">${p.changes.slice(0, 10).map((c) => `<li>${esc(c.text)}</li>`).join('')}</ul></details>` : ''}
@@ -133,12 +133,12 @@ async function dashboard(user) {
   const { data: venues, error } = await sb.from('venues').select('id,name,overall,last_seen_at,latest').order('name');
   if (error) { $('app').innerHTML = `<div class="msg bad">${esc(error.message)}</div>`; return; }
   $('app').innerHTML =
-    (venues.length ? venues.map(venueCard).join('') : `<div class="empty">No rigs yet. Add one below with the key from its Settings ‚Üí Cloud.</div>`) +
+    (venues.length ? venues.map(venueCard).join('') : `<div class="empty">No rigs yet. Add one below with the key from its Settings \u2192 Cloud.</div>`) +
     `<div class="card">
       <div class="name">Add a rig</div>
-      <div class="meta">On the computer running AV Pulse: Settings ‚Üí Cloud ‚Üí ‚ÄúThis rig‚Äôs key‚Äù.</div>
+      <div class="meta">On the computer running AV Pulse: Settings \u2192 Cloud \u2192 \u201cThis rig\u2019s key\u201d.</div>
       <input id="vname" placeholder="What you call this rig (e.g. Main Sanctuary)">
-      <input id="vkey" placeholder="The rig‚Äôs key" autocomplete="off" spellcheck="false">
+      <input id="vkey" placeholder="The rig\u2019s key" autocomplete="off" spellcheck="false">
       <button id="add">Add</button>
       <div class="msg" id="addmsg"></div>
       <button class="ghost" id="out">Sign out</button>
@@ -161,7 +161,7 @@ async function dashboard(user) {
 
 (async () => {
   if (!configured) {
-    $('app').innerHTML = `<div class="card"><div class="name">Not configured yet</div><div class="meta">Fill in SUPABASE_URL and SUPABASE_ANON_KEY at the top of this page‚Äôs script.</div></div>`;
+    $('app').innerHTML = `<div class="card"><div class="name">Not configured yet</div><div class="meta">Fill in SUPABASE_URL and SUPABASE_ANON_KEY at the top of this page\u2019s script.</div></div>`;
     return;
   }
   const { data: { session } } = await sb.auth.getSession();
